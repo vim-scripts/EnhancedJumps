@@ -10,6 +10,17 @@
 " Maintainer:	Ingo Karkat <ingo@karkat.de>
 "
 " REVISION	DATE		REMARKS 
+"   1.10.006	06-Jul-2009	BF: Folds at the jump target must be explicitly
+"				opened; inside a mapping / :normal CTRL-I/O
+"				behave like [nN*#]. 
+"   1.10.005	01-Jul-2009	ENH: To overcome the next buffer warning, a
+"				previously given [count] need not be specified
+"				again. A jump command with a different [count]
+"				than last time now is treated as a separate jump
+"				command and thus doesn't overcome the next
+"				buffer warning. 
+"				Factored out s:GetJumps(), s:GetCurrentIndex()
+"				and s:GetCount() to reduce the size of s:Jump(). 
 "   1.00.004	01-Jul-2009	Renamed to EnhancedJumps.vim. 
 "				BF: Empty jump text matched any line in the
 "				current buffer; but it must match an empty line
@@ -40,6 +51,40 @@ if ! exists('g:stopFirstAndNotifyTimeoutLen')
 endif
 
 "- functions ------------------------------------------------------------------
+function! s:GetJumps()
+    redir => l:jumpsOutput
+    silent! jumps
+    redir END
+    redraw  " This is necessary because of the :redir done earlier. 
+
+    return split(l:jumpsOutput, "\n")[1:] " The first line contains the header. 
+endfunction
+function! s:GetCurrentIndex( jumps )
+    let l:currentIndex = -1
+    " Note: The linear search starts from the end because it's more likely that
+    " the user hasn't navigated to the oldest entries in the jump list. 
+    for l:i in reverse(range(len(a:jumps)))
+	if strpart(a:jumps[l:i], 0, 1) == '>'
+	    let l:currentIndex = l:i
+	    break
+	endif
+    endfor
+    if l:currentIndex < 0 | throw 'ASSERT: :jumps command contains > marker' | endif
+    return l:currentIndex
+endfunction
+function! s:GetCount()
+    " Determine whether this is a repetition of the same jump command that got
+    " stuck on the warning about jumping into another buffer. 
+    let l:wasStopped = (exists('t:lastJumpCommandCount') && t:lastJumpCommandCount)
+    if l:wasStopped
+	" If no [count] is given on this repetition, re-use the [count]
+	" from the initial jump command that got stuck on the warning. 
+	return (v:count ? v:count1 : t:lastJumpCommandCount)
+    else
+	" This isn't a repetition; use the supplied [count]. 
+	return v:count1
+    endif
+endfunction
 function! s:BufferName( jumpText )
     return (empty(a:jumpText) ? '[No name]' : a:jumpText)
 endfunction
@@ -74,9 +119,14 @@ function! s:ParseJumpLine( jumpLine )
     let l:parseResult = matchlist(a:jumpLine, '^>\?\s*\d\+\s\+\(\d\+\)\s\+\(\d\+\)\s\+\(.*\)$')[1:3]
     return (len(l:parseResult) == 3 ? l:parseResult : [0, 0, ''])
 endfunction
-function! s:DoJump( isNewer )
+function! s:DoJump( count, isNewer )
     try
-	execute 'normal!' v:count1 . (a:isNewer ? "\<C-i>" : "\<C-o>")
+	execute 'normal!' a:count . (a:isNewer ? "\<C-i>" : "\<C-o>")
+
+	" When typed, CTRL-I/O open the fold at the jump target, but inside a
+	" mapping or :normal this must be done explicitly via 'zv'. 
+	normal! zv 
+	
 	return 1
     catch /^Vim\%((\a\+)\)\=:E/
 	echohl ErrorMsg
@@ -90,24 +140,11 @@ function! s:DoJump( isNewer )
 endfunction
 function! s:Jump( isNewer )
     let l:jumpDirection = (a:isNewer ? 'newer' : 'older')
+    let l:jumps = s:GetJumps()
+    let l:currentIndex = s:GetCurrentIndex(l:jumps)
+    let l:count = s:GetCount()
 
-    redir => l:jumpsOutput
-    silent! jumps
-    redir END
-    redraw  " This is necessary because of the :redir done earlier. 
-
-    let l:jumps = split(l:jumpsOutput, "\n")[1:] " The first line contains the header. 
-
-    let l:currentIndex = -1
-    for l:i in reverse(range(len(l:jumps)))
-	if strpart(l:jumps[l:i], 0, 1) == '>'
-	    let l:currentIndex = l:i
-	    break
-	endif
-    endfor
-    if l:currentIndex < 0 | throw 'ASSERT: :jumps command contains > marker' | endif
-
-    let l:targetIndex = l:currentIndex + (a:isNewer ? 1 : -1) * v:count1
+    let l:targetIndex = l:currentIndex + (a:isNewer ? 1 : -1) * l:count
     let l:followingIndex = l:targetIndex + (a:isNewer ? 1 : -1)
     let l:targetJump = (l:targetIndex < 0 ? '' : get(l:jumps, l:targetIndex, ''))
     let l:followingJump = (l:followingIndex < 0 ? '' : get(l:jumps, l:followingIndex, ''))
@@ -125,17 +162,17 @@ function! s:Jump( isNewer )
 	" We still execute the actual jump command, even though we've determined
 	" that it won't work. The jump command will still cause the customary
 	" beep. 
-	call s:DoJump(a:isNewer)
+	call s:DoJump(l:count, a:isNewer)
     else
 	let [l:targetLine, l:targetCol, l:targetText] = s:ParseJumpLine(l:targetJump)
 	if s:IsInvalid(l:targetText)
 	    " Do nothing here, the jump command will print an error. 
-	    call s:DoJump(a:isNewer)
+	    call s:DoJump(l:count, a:isNewer)
 	elseif s:IsJumpInCurrentBuffer(l:targetLine, l:targetText)
 	    " To avoid that the jump command's output overwrites the indication
 	    " of the next jump position, the jump command is executed first and
 	    " the indication only printed if the jump didn't cause an error. 
-	    if s:DoJump(a:isNewer)
+	    if s:DoJump(l:count, a:isNewer)
 		let [l:followingLine, l:followingCol, l:followingText] = s:ParseJumpLine(l:followingJump)
 		if empty(l:followingJump)
 		    redraw
@@ -155,13 +192,24 @@ function! s:Jump( isNewer )
 	    endif
 	else
 	    " The next jump would move to another buffer. Stop and notify first,
-	    " and only execute the jump if the same jump command is executed
-	    " once more immediately afterwards. 
-	    let l:wasLastJumpBufferStop = (exists('t:lastJumpBufferStop') && s:WasLastStop([a:isNewer, winnr(), l:targetText, localtime()], t:lastJumpBufferStop))
+	    " and only execute the jump if the same jump command (either
+	    " repeating the original [count] or completely omitting it) is
+	    " executed once more immediately afterwards. 
+	    let l:isSameCountAsLast = (! v:count || (exists('t:lastJumpCommandCount') && t:lastJumpCommandCount == v:count1))
+	    let l:wasLastJumpBufferStop = l:isSameCountAsLast && (exists('t:lastJumpBufferStop') && s:WasLastStop([a:isNewer, winnr(), l:targetText, localtime()], t:lastJumpBufferStop))
 	    if l:wasLastJumpBufferStop
-		call s:DoJump(a:isNewer)
+		call s:DoJump(l:count, a:isNewer)
 	    else
+		" Memorize the current jump command, context, target and time
+		" (except for the [count], which is stored separately) to be
+		" able to detect the same jump command. 
 		let t:lastJumpBufferStop = [a:isNewer, winnr(), l:targetText, localtime()]
+
+		" Memorize the given [count] to detect the same jump command,
+		" and that it need not be specified on the repetition of the
+		" jump command to overcome the warning. 
+		let t:lastJumpCommandCount = l:count
+
 		let v:warningmsg = 'next: ' . s:BufferName(l:targetText)
 		echohl WarningMsg
 		echomsg v:warningmsg
@@ -177,6 +225,7 @@ function! s:Jump( isNewer )
     endif
 
     let t:lastJumpBufferStop = [a:isNewer, winnr(), '', 0]
+    let t:lastJumpCommandCount = 0  " This is no repetition. 
 endfunction
 
 "- mappings -------------------------------------------------------------------
