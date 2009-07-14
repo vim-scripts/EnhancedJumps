@@ -89,6 +89,9 @@ IDEAS							 *EnhancedJumps-ideas*
 ==============================================================================
 HISTORY						       *EnhancedJumps-history*
 
+1.11	14-Jul-2009
+BF: A '^\)' in the jump text caused "E55: Unmatched \)"
+
 1.10	06-Jul-2009
 - ENH: To overcome the next buffer warning, a previously given [count] need
   not be specified again. A jump command with a different [count] than last
