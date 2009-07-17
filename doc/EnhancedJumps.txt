@@ -89,6 +89,10 @@ IDEAS							 *EnhancedJumps-ideas*
 ==============================================================================
 HISTORY						       *EnhancedJumps-history*
 
+1.12    17-Jul-2009
+BF: Trailing space after the command to open the folds accidentally moved
+cursor one position to the right of the jump target. 
+
 1.11	14-Jul-2009
 BF: A '^\)' in the jump text caused "E55: Unmatched \)"
 
