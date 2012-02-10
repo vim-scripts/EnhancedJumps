@@ -24,6 +24,9 @@
 " LIMITATIONS:
 " ASSUMPTIONS:
 " KNOWN PROBLEMS:
+"  - EchoWithoutScrolling#RenderTabs(): The assumption index == char width
+"    doesn't work for unprintable ASCII and any non-ASCII characters. 
+"
 " TODO:
 "   - Consider 'cmdheight', add argument isSingleLine. 
 "
@@ -131,14 +134,16 @@ function! EchoWithoutScrolling#RenderTabs( text, tabstop, startColumn )
     let l:pos = 0
     let l:text = a:text
     while l:pos < strlen(l:text)
+	" FIXME: The assumption index == char width doesn't work for unprintable
+	" ASCII and any non-ASCII characters. 
 	let l:pos = stridx( l:text, "\t", l:pos )
 	if l:pos == -1
 	    break
 	endif
 	let l:text = strpart( l:text, 0, l:pos ) . repeat( ' ', EchoWithoutScrolling#GetTabReplacement( l:pos + a:startColumn, a:tabstop ) ) . strpart( l:text, l:pos + 1 )
     endwhile
-    return l:text
     
+    return l:text
 endfunction
 
 function! EchoWithoutScrolling#TruncateTo( text, length ) 
@@ -264,4 +269,4 @@ function! EchoWithoutScrolling#TranslateLineBreaks( text )
     return substitute(a:text, "[\<CR>\<LF>]", '\=strtrans(submatch(0))', 'g')
 endfunction
 
-" vim: set sts=4 sw=4 noexpandtab ff=unix fdm=syntax :
+" vim: set ts=8 sts=4 sw=4 noexpandtab ff=unix fdm=syntax :

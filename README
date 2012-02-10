@@ -17,6 +17,17 @@ This plugin enhances the built-in CTRL-I / CTRL-O jump commands:
   be warned when a jump would move to another buffer, you're much less likely
   to get lost. 
 
+In addition to the enhanced jump commands, separate special mappings are
+available that restrict the jump targets to only local locations (in the same
+buffer) and remote locations (only in other buffers). 
+
+
+This plugin enhances the built-in g;/g, change list jump commands so that
+they skip jumps to previous / later edit locations that lie within the
+currently visible range. This makes it easier to navigate between distant
+edits in a large buffer, without having to manually skip over all the local
+changes. 
+
 USAGE
 Simply use the CTRL-O and CTRL-I commands to go to an older / newer cursor
 position in the jump list. When a warning "next: {file}" is echoed, quickly
@@ -25,3 +36,36 @@ typed again; if you do include the [count], it must be the same as before).
 If you do not want to move to that buffer, just ignore the warning, and
 continue browsing the current buffer. On the next jump attempt, the warning
 will be repeated. 
+
+g<CTRL-O>, g<CTRL-I>	Go to [count] older / newer cursor position in the
+			current buffer. Jumps to other buffers are not
+			considered. Useful when you mainly edited one file,
+			briefly jumped to another, and now want to recall
+			older positions without considering the other file. 
+
+<Leader><CTRL-O>, <Leader><CTRL-I>
+			Go to [count] older / newer cursor position in another
+			buffer. Jumps inside the current buffer are not
+			considered. Useful for recalling previously visited
+			buffers without going through all local positions. 
+			Regardless of the jump direction, the last jump
+			position in a buffer is used when there are multiple
+			subsequent jumps in a buffer. 
+
+
+Simply use the g; and g, commands to go to an older / newer far change
+position in the change list. 
+
+g;			Go to [count] older far change (that lies outside the
+			currently visible range and is more than the current
+			window height lines away from the previous change or
+			the last accepted change). 
+			If [count] is larger than the number of older far
+			change positions go to the oldest far change.
+			If there is no older far change, go to the [count]
+			older near change; i.e. fall back to the original
+			behavior. 
+			If there is no older change an error message is given.
+			(not a motion command)
+g,			Go to [count] newer far change. 
+			Just like g; but in the opposite direction.
