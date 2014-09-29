@@ -5,12 +5,13 @@
 "   - ingo/msg.vim autoload script
 "   - ingo/window/dimensions.vim autoload script
 "
-" Copyright: (C) 2012-2013 Ingo Karkat
+" Copyright: (C) 2012-2014 Ingo Karkat
 "   The VIM LICENSE applies to this script; see ':help copyright'.
 "
 " Maintainer:	Ingo Karkat <ingo@karkat.de>
 "
 " REVISION	DATE		REMARKS
+"   3.02.006	05-May-2014	Use ingo#msg#WarningMsg().
 "   3.01.005	14-Jun-2013	Use ingo/msg.vim.
 "   3.01.004	05-Jun-2013	Handle it when the :changes command sometimes
 "				outputs just the header without a following ">"
@@ -78,10 +79,7 @@ endfunction
 
 function! s:warn( warningmsg )
     redraw	" After the jump, a redraw is pending. Do it now or the message may vanish.
-    let v:warningmsg = a:warningmsg
-    echohl WarningMsg
-    echomsg v:warningmsg
-    echohl None
+    call ingo#msg#WarningMsg(a:warningmsg)
 endfunction
 function! s:DoJump( count, isNewer )
     if a:count == 0
@@ -97,7 +95,7 @@ function! s:DoJump( count, isNewer )
 	normal! zv
 
 	return 1
-    catch /^Vim\%((\a\+)\)\=:E/
+    catch /^Vim\%((\a\+)\)\=:/
 	" A Vim error occurs when already at the start / end of the changelist.
 	call ingo#msg#VimExceptionMsg()
 	return 0

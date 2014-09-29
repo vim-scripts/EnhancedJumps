@@ -4,13 +4,20 @@
 "   - EnhancedJumps/Common.vim autoload script
 "   - ingo/avoidprompt.vim autoload script
 "   - ingo/msg.vim autoload script
+"   - ingo/record.vim autoload script
 "
-" Copyright: (C) 2009-2013 Ingo Karkat
+" Copyright: (C) 2009-2014 Ingo Karkat
 "   The VIM LICENSE applies to this script; see ':help copyright'.
 "
 " Maintainer:	Ingo Karkat <ingo@karkat.de>
 "
 " REVISION	DATE		REMARKS
+"   3.02.019	29-Sep-2014	Add g:EnhancedJumps_CaptureJumpMessages
+"				configuration to turn off the capturing of the
+"				messages during the jump, as the used :redir may
+"				cause errors with another, concurrent capture.
+"   3.02.018	30-May-2014	Use ingo#record#Position().
+"   3.02.017	05-May-2014	Use ingo#msg#WarningMsg().
 "   3.01.016	14-Jun-2013	Use ingo/msg.vim.
 "   3.01.015	07-Jun-2013	Move EchoWithoutScrolling.vim into ingo-library.
 "   3.00.014	08-Feb-2012	Move common shared functions to
@@ -99,6 +106,8 @@
 "				jumps inside the current buffer are highlighted
 "				like in the :jumps output.
 "	001	27-Jun-2009	file creation
+let s:save_cpo = &cpo
+set cpo&vim
 
 function! s:FilterDuplicateSubsequentFiles( jumps, isNewer )
 "****D echo join(a:jumps, "\n")
@@ -185,11 +194,6 @@ function! s:IsJumpInCurrentBuffer( parsedJump )
 "****D echomsg '****' l:regexp
     return getline(a:parsedJump.lnum) =~# l:regexp
 endfunction
-function! s:RecordPosition()
-    " The position record consists of the current cursor position and the buffer
-    " number.
-    return getpos('.') + [bufnr('')]
-endfunction
 function! s:DoJump( count, isNewer )
     if a:count == 0
 	execute "normal! \<C-\>\<C-n>\<Esc>"
@@ -201,9 +205,9 @@ function! s:DoJump( count, isNewer )
 	" not a Vim error, so no exception is thrown.
 	" We check the position before and after the jump to detect its success
 	" in all cases.
-	let l:originalPosition = s:RecordPosition()
+	let l:originalPosition = ingo#record#Position(0)
 	execute 'normal!' a:count . (a:isNewer ? "\<C-i>" : "\<C-o>")
-	if s:RecordPosition() == l:originalPosition
+	if ingo#record#Position(0) == l:originalPosition
 	    return 0
 	endif
 
@@ -212,7 +216,7 @@ function! s:DoJump( count, isNewer )
 	normal! zv
 
 	return 1
-    catch /^Vim\%((\a\+)\)\=:E/
+    catch /^Vim\%((\a\+)\)\=:/
 	" A Vim error occurs when there's an invalid jump position.
 	call ingo#msg#VimExceptionMsg()
 	return 0
@@ -294,11 +298,18 @@ function! EnhancedJumps#Jump( isNewer, filter )
 	    " repeating the original [count] or completely omitting it) is
 	    " executed once more immediately afterwards.
 	    let l:isSameCountAsLast = (! v:count || (exists('t:lastJumpCommandCount') && t:lastJumpCommandCount == v:count1))
-	    let l:wasLastJumpBufferStop = l:isSameCountAsLast && (exists('t:lastJumpBufferStop') && s:WasLastStop([a:isNewer, winnr(), l:target.text, localtime()], t:lastJumpBufferStop))
+	    let l:wasLastJumpBufferStop = l:isSameCountAsLast &&
+	    \   exists('t:lastJumpBufferStop') &&
+	    \   s:WasLastStop([a:isNewer, winnr(), l:target.text, localtime()], t:lastJumpBufferStop)
 	    if l:wasLastJumpBufferStop || ! empty(a:filter)
-		redir => l:fileJumpCapture
-		silent call s:DoJump(l:jumpCount, a:isNewer)
-		redir END
+		if g:EnhancedJumps_CaptureJumpMessages
+		    redir => l:fileJumpCapture
+			silent call s:DoJump(l:jumpCount, a:isNewer)
+		    redir END
+		else
+		    let l:fileJumpCapture = ''
+		    call s:DoJump(l:jumpCount, a:isNewer)
+		endif
 
 		if a:filter ==# 'remote'
 		    " After the jump to another file, the filtered list for
@@ -332,11 +343,7 @@ function! EnhancedJumps#Jump( isNewer, filter )
 		" jump command to overcome the warning.
 		let t:lastJumpCommandCount = l:count
 
-		let v:warningmsg = printf('next%s: %s', l:filterName, s:BufferName(l:target.text))
-		echohl WarningMsg
-		echomsg v:warningmsg
-		echohl None
-
+		call ingo#msg#WarningMsg(printf('next%s: %s', l:filterName, s:BufferName(l:target.text)))
 		" Signal edge case via beep.
 		execute "normal! \<C-\>\<C-n>\<Esc>"
 
@@ -350,4 +357,6 @@ function! EnhancedJumps#Jump( isNewer, filter )
     let t:lastJumpCommandCount = 0  " This is no repetition.
 endfunction
 
+let &cpo = s:save_cpo
+unlet s:save_cpo
 " vim: set ts=8 sts=4 sw=4 noexpandtab ff=unix fdm=syntax :
