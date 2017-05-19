@@ -3,15 +3,32 @@
 " DEPENDENCIES:
 "   - EnhancedJumps/Common.vim autoload script
 "   - ingo/avoidprompt.vim autoload script
+"   - ingo/compat.vim autoload script
 "   - ingo/msg.vim autoload script
 "   - ingo/record.vim autoload script
 "
-" Copyright: (C) 2009-2014 Ingo Karkat
+" Copyright: (C) 2009-2016 Ingo Karkat
 "   The VIM LICENSE applies to this script; see ':help copyright'.
 "
 " Maintainer:	Ingo Karkat <ingo@karkat.de>
 "
 " REVISION	DATE		REMARKS
+"   3.03.020	18-Nov-2016	After a jump to another file, also re-query the
+"				jumps, because the jumplist got updated with the
+"				text for the jumps, whereas it previously only
+"				contained the buffer name. Thanks to Daniel
+"				Hahler for sending a patch.
+"				Especially in small terminals, jump messages may
+"				not fit and cause a hit-enter prompt. Truncate
+"				messages in s:Echo().
+"				Local jump message only considers the
+"				header, but not the file jump messages. If its
+"				one, and cmdheight is 1, add its width to the
+"				number of reserved columns, as we append the
+"				following location. Thanks to Daniel Hahler for
+"				the patch.
+"				The warning message before a remote jump isn't
+"				truncated to fit.
 "   3.02.019	29-Sep-2014	Add g:EnhancedJumps_CaptureJumpMessages
 "				configuration to turn off the capturing of the
 "				messages during the jump, as the used :redir may
@@ -224,15 +241,16 @@ function! s:DoJump( count, isNewer )
 endfunction
 function! s:Echo( fileJumpMessages, message )
     if empty(a:fileJumpMessages)
-	echo a:message
+	echo ingo#avoidprompt#Truncate(a:message)
     elseif &cmdheight > 1 || len(a:fileJumpMessages) > 1
 	for l:message in a:fileJumpMessages
 	    echomsg l:message
 	endfor
-	echo a:message
+	echo ingo#avoidprompt#Truncate(a:message)
     else
-	echomsg a:fileJumpMessages[0] . ' '
-	echon a:message
+	let l:message = ingo#avoidprompt#Truncate(a:message, ingo#compat#strdisplaywidth(a:fileJumpMessages[0]) + 1)    " The captured jump message may contain unprintable or non-ASCII characters; use strdisplaywidth().
+	echomsg a:fileJumpMessages[0] . (empty(l:message) ? '' : ' ')
+	echon l:message
     endif
 endfunction
 function! s:EchoFollowingMessage( followingJump, jumpDirection, filterName, fileJumpMessages )
@@ -246,11 +264,15 @@ function! s:EchoFollowingMessage( followingJump, jumpDirection, filterName, file
     elseif s:IsJumpInCurrentBuffer(l:following)
 	let l:header = printf('next%s: %d,%d ', a:filterName, l:following.lnum, l:following.col)
 	call s:Echo(a:fileJumpMessages, l:header)
+	let l:reservedColumns = len(l:header)	" l:header is printable ASCII-only, so can use len() for text width.
+	if len(a:fileJumpMessages) == 1 && &cmdheight == 1
+	    let l:reservedColumns += ingo#compat#strdisplaywidth(a:fileJumpMessages[0], l:reservedColumns) + 1  " The captured jump message may contain unprintable or non-ASCII characters; use strdisplaywidth(); it starts after the header, so consider its width, too.
+	endif
 	echohl Directory
-	echon ingo#avoidprompt#Truncate(l:following.text, strlen(l:header))	| " l:header is printable ASCII-only, so can use strlen() for text width.
+	echon ingo#avoidprompt#Truncate(getline(l:following.lnum), l:reservedColumns)
 	echohl None
     else
-	call s:Echo(a:fileJumpMessages, ingo#avoidprompt#Truncate(printf('next%s: %s', a:filterName, s:BufferName(l:following.text))))
+	call s:Echo(a:fileJumpMessages, printf('next%s: %s', a:filterName, s:BufferName(l:following.text)))
     endif
 endfunction
 function! EnhancedJumps#Jump( isNewer, filter )
@@ -311,20 +333,20 @@ function! EnhancedJumps#Jump( isNewer, filter )
 		    call s:DoJump(l:jumpCount, a:isNewer)
 		endif
 
-		if a:filter ==# 'remote'
-		    " After the jump to another file, the filtered list for
-		    " remote files becomes wrong in case the following file is
-		    " the same as the original file (i.e. A(original) -> B(jump)
-		    " -> A(following)), because that jump was initially filtered
-		    "  out. To correctly determine the following jump, we must
-		    "  re-query and re-filter the jumps.
-		    "  In addition, the file paths to the file may have changed
-		    "  due to changes in CWD / 'autochdir'.
-		    let l:followingJump = get(
-		    \	s:FilterJumps(EnhancedJumps#Common#SliceJumpsInDirection(EnhancedJumps#Common#GetJumps('jumps'), a:isNewer), a:filter, a:isNewer),
-		    \	0, ''
-		    \)
-		endif
+		" After the jump to another file, the filtered list for
+		" remote files becomes wrong in case the following file is
+		" the same as the original file (i.e. A(original) -> B(jump)
+		" -> A(following)), because that jump was initially filtered
+		"  out. To correctly determine the following jump, we must
+		"  re-query and re-filter the jumps.
+		"  In addition, the file paths to the file may have changed
+		"  due to changes in CWD / 'autochdir'.
+		"  For local files the jumplist gets updated with the text for
+		"  the jumps, while it only contained the buffer name before.
+		let l:followingJump = get(
+		\	s:FilterJumps(EnhancedJumps#Common#SliceJumpsInDirection(EnhancedJumps#Common#GetJumps('jumps'), a:isNewer), a:filter, a:isNewer),
+		\	0, ''
+		\)
 
 		call s:EchoFollowingMessage(l:followingJump, l:jumpDirection, l:filterName,
 		\   filter(
@@ -343,7 +365,7 @@ function! EnhancedJumps#Jump( isNewer, filter )
 		" jump command to overcome the warning.
 		let t:lastJumpCommandCount = l:count
 
-		call ingo#msg#WarningMsg(printf('next%s: %s', l:filterName, s:BufferName(l:target.text)))
+		call ingo#msg#WarningMsg(ingo#avoidprompt#Truncate(printf('next%s: %s', l:filterName, s:BufferName(l:target.text))))
 		" Signal edge case via beep.
 		execute "normal! \<C-\>\<C-n>\<Esc>"
 

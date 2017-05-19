@@ -120,7 +120,7 @@ warning about jumping into another buffer defaults to (roughly) two seconds.
 To change the timeout, set a different value (in milliseconds): >
     let g:stopFirstAndNotifyTimeoutLen = 2000
 <
-			*g:EnhancedJumps_CaptureJumpMessages*
+					 *g:EnhancedJumps_CaptureJumpMessages*
 Jumps to another buffer happen with "redir => l:fileJumpCapture". If other
 plugins triggered by the (e.g. BufWinEnter) event do another :redir, this
 causes an error, because nested redirs are prohibited. You can avoid this
@@ -171,6 +171,18 @@ IDEAS							 *EnhancedJumps-ideas*
 
 ==============================================================================
 HISTORY						       *EnhancedJumps-history*
+
+3.03	18-Nov-2016
+- After a jump to another file, also re-query the jumps, because the jumplist
+  got updated with the text for the jumps, whereas it previously only
+  contained the buffer name. Thanks to Daniel Hahler for sending a patch.
+- Especially in small terminals, jump messages may not fit and cause a
+  hit-enter prompt. Truncate messages in s:Echo(). Local jump message only
+  considers the header, but not the file jump messages. If its one, and
+  cmdheight is 1, add its width to the number of reserved columns, as we
+  append the following location. Thanks to Daniel Hahler for the patch.
+- The warning message before a remote jump isn't truncated to fit.
+- Minor: Use ingo#compat#abs().
 
 3.02	29-Sep-2014
 - Add g:EnhancedJumps_CaptureJumpMessages configuration to turn off the
@@ -226,7 +238,7 @@ BF: A '^\)' in the jump text caused "E55: Unmatched \)"
 First published version.
 
 ==============================================================================
-Copyright: (C) 2009-2014 Ingo Karkat
+Copyright: (C) 2009-2016 Ingo Karkat
 The VIM LICENSE applies to this plugin; see |copyright|.
 
 Maintainer:	Ingo Karkat <ingo@karkat.de>
